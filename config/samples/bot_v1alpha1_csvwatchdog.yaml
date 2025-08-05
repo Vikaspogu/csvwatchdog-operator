@@ -1,0 +1,16 @@
+apiVersion: bot.vikaspogu.com/v1alpha1
+kind: CSVWatchdog
+metadata:
+  labels:
+    app.kubernetes.io/name: csvwatchdog-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: csvwatchdog-sample
+spec:
+  gitHubCredentials:
+    name: pattoken
+    namespace: csvwatchdog-operator-system
+    key: token
+  repositoryOwner: vikaspogu
+  ownerType: user
+  repositoryName: openshift-multicluster
+  path: components

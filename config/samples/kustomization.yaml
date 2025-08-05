@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- bot_v1alpha1_csvwatchdog.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
