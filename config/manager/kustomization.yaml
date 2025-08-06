@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/rhn_gps_vpogu/csvwatchdog-operator
-  newTag: 0.0.1
+  newTag: 1.0.0
