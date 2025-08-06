@@ -123,16 +123,16 @@ func (r *CSVWatchdogReconciler) reconcileInstallPlan(ctx context.Context, req ct
 		log.Error(err, "Cannot get install plans")
 		return ctrl.Result{}, err
 	} else {
-		labels := installPlan.ObjectMeta.GetLabels()
+		labels := installPlan.GetLabels()
 		_, ok := labels["cvswatchdog/pr_open"]
 		if installPlan.Spec.Approval == "Manual" && !ok {
 			installPlanVersions = append(installPlanVersions, InstallPlanVersion{
 				CSV:       installPlan.Spec.ClusterServiceVersionNames[0],
-				Name:      installPlan.ObjectMeta.Name,
-				Namespace: installPlan.ObjectMeta.Namespace,
+				Name:      installPlan.Name,
+				Namespace: installPlan.Namespace,
 			})
 		} else if installPlan.Spec.Approval == "Manual" && ok {
-			log.Info("Skipping the installPlan " + installPlan.ObjectMeta.Name)
+			log.Info("Skipping the installPlan " + installPlan.Name)
 		}
 	}
 
@@ -150,7 +150,7 @@ func (r *CSVWatchdogReconciler) reconcileInstallPlan(ctx context.Context, req ct
 				log.Error(err, "Cannot clone and search")
 				return ctrl.Result{}, err
 			}
-			//update installplan
+			// update installplan
 			installPlan := &operatorsv1alpha1.InstallPlan{}
 			if err = r.Get(ctx, types.NamespacedName{
 				Name:      installPlanVersion.Name,
@@ -187,10 +187,10 @@ func (r *CSVWatchdogReconciler) reconcileCSVWatchDog(ctx context.Context, req ct
 		scm.SearchPath = csvwatchdog.Spec.Path
 	}
 
-	//Check if its github secrets
+	// Check if its github secrets
 	if csvwatchdog.Spec.GitHubCredentials.Name != "" {
 		secret := &corev1.Secret{}
-		err := r.Client.Get(ctx, types.NamespacedName{
+		err := r.Get(ctx, types.NamespacedName{
 			Name:      csvwatchdog.Spec.GitHubCredentials.Name,
 			Namespace: csvwatchdog.Spec.GitHubCredentials.Namespace,
 		}, secret)
@@ -295,15 +295,24 @@ func cloneRepoAndSearch(scm *SCM, csvName string) (bool, error) {
 	// 4) Check for any changes
 	if status.IsClean() {
 		log.Info("No Changes to branch")
-		repo.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/" + branch))
-		wt.Clean(&git.CleanOptions{
+		if err = repo.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/" + branch)); err != nil {
+			log.Error(err, "Cannot remove reference")
+			return false, err
+		}
+		if err = wt.Clean(&git.CleanOptions{
 			Dir: true, // clean directories too
-		})
+		}); err != nil {
+			log.Error(err, "Cannot clean worktree")
+			return false, err
+		}
 		return false, err
 	} else {
 		for path, f := range status {
 			if f.Worktree != git.Unmodified {
-				wt.Add(path)
+				if _, err = wt.Add(path); err != nil {
+					log.Error(err, "Cannot add path")
+					return false, err
+				}
 			}
 		}
 		if _, err = wt.Commit("chore: update in-memory file", &git.CommitOptions{
@@ -370,7 +379,12 @@ func scanFileAndReplaceVersion(fs billy.Filesystem, path, query string) error {
 		log.Error(err, "Cannot Open File")
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			// handle or log the close error
+			log.Error(err, "warning: failed to close file")
+		}
+	}()
 
 	base := regexp.QuoteMeta(strings.Split(query, ".")[0])
 	pattern := `(?m)^(\s*startingCSV:\s*)` + base + `.*$`
@@ -398,7 +412,12 @@ func scanFileAndReplaceVersion(fs billy.Filesystem, path, query string) error {
 			if err != nil {
 				return err
 			}
-			defer out.Close()
+			defer func() {
+				if err := out.Close(); err != nil {
+					// handle or log the close error
+					log.Error(err, "warning: failed to close file")
+				}
+			}()
 			if _, err := out.Write([]byte(updated)); err != nil {
 				return err
 			}
